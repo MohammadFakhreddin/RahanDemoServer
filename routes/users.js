@@ -1,104 +1,93 @@
+'use strict';
 var express = require('express');
 var router = express.Router();
 const config = require('./../config');
-const statusCode = require('./../statusCodes');
+const StatusCodes = require('./../statusCodes');
 const constants = require('./../constants');
 var bodyParser = require("body-parser");
-
+var AllSchema = require("../schemas/UserSchema");
+var UserSchema = AllSchema.User;
+var TaskSchema = AllSchema.Task;
+var Verify = require("./verify");
+var Passhash = require("./../Utils/passHash");
 router.use(bodyParser.json());
 const loggerMeta = {Context: "users"};
 
-var taskItems = [];
-taskItems[0] = {
-    title: 'تعمیر x',
-    startDate: new Date(),
-    endDate: new Date(),
-    description: "تجهیزات بخش X مشکل پیدا کرده اند لطفا بررسی شود",
-    taskMode: constants.taskMode.EM,
-    attachedLocation: null,
-    locationAddress: "ادرس۱/ادرس۲/ادرس۳/ادرس۴",
-    hasAttachedLocation: false,
-    state: 0
-};
-taskItems[1] = {
-    title: 'بررسی روزانه بخش Y',
-    startDate: new Date(),
-    endDate: new Date(),
-    description: "تجهیزات بخش X مشکل پیدا کرده اند لطفا بررسی شود",
-    taskMode: constants.taskMode.EM,
-    attachedLocation: null,
-    locationAddress: "ادرس۱/ادرس۲/ادرس۳/ادرس۴",
-    hasAttachedLocation: false,
-    state: 0
-};
-taskItems[2] = {
-    title: 'رسیدگی به بخش Z',
-    startDate: new Date(),
-    endDate: new Date(),
-    description: "تجهیزات بخش X مشکل پیدا کرده اند لطفا بررسی شود",
-    taskMode: constants.taskMode.EM,
-    attachedLocation: null,
-    locationAddress: "ادرس۱/ادرس۲/ادرس۳/ادرس۴",
-    hasAttachedLocation: false,
-    state: 0
-};
-taskItems[3] = {
-    title: 'ساخت بخش T',
-    startDate: new Date(),
-    endDate: new Date(),
-    description: "تجهیزات بخش X مشکل پیدا کرده اند لطفا بررسی شود",
-    taskMode: constants.taskMode.EM,
-    attachedLocation: null,
-    locationAddress: "ادرس۱/ادرس۲/ادرس۳/ادرس۴",
-    hasAttachedLocation: false,
-    state: 0
-};
-taskItems[4] = {
-    title: 'رسیدگی به Y',
-    startDate: new Date(),
-    endDate: new Date(),
-    description: "تجهیزات بخش X مشکل پیدا کرده اند لطفا بررسی شود",
-    taskMode: constants.taskMode.EM,
-    attachedLocation: null,
-    locationAddress: "ادرس۱/ادرس۲/ادرس۳/ادرس۴",
-    hasAttachedLocation: false,
-    state: 0
-};
-taskItems[5] = {
-    title: 'تعمیر الف',
-    startDate: new Date(),
-    endDate: new Date(),
-    description: "تجهیزات بخش X مشکل پیدا کرده اند لطفا بررسی شود",
-    taskMode: constants.taskMode.EM,
-    attachedLocation: null,
-    locationAddress: "ادرس۱/ادرس۲/ادرس۳/ادرس۴",
-    hasAttachedLocation: false,
-    state: 0
-};
-taskItems[6] = {
-    title: 'تعمیر ظ',
-    startDate: new Date(),
-    endDate: new Date(),
-    description: "تجهیزات بخش X مشکل پیدا کرده اند لطفا بررسی شود",
-    taskMode: constants.taskMode.EM,
-    attachedLocation: null,
-    locationAddress: "ادرس۱/ادرس۲/ادرس۳/ادرس۴",
-    hasAttachedLocation: false,
-    state: 0
-};
-taskItems[7] = {
-    title: 'ساخت بخش M',
-    startDate: new Date(),
-    endDate: new Date(),
-    description: "تجهیزات بخش X مشکل پیدا کرده اند لطفا بررسی شود",
-    taskMode: constants.taskMode.EM,
-    attachedLocation: null,
-    locationAddress: "ادرس۱/ادرس۲/ادرس۳/ادرس۴",
-    hasAttachedLocation: false,
-    state: 0
-};
-router.get('/login', function (req, res, next) {
-    res.status(200).json({taskItems: taskItems});
+
+function userFound(req, res, user) {
+    TaskSchema.find({department: user.department}, function (err, taskList) {
+        if (err) {
+            throw err;
+        }
+        console.log("Login successful for " + user.username, loggerMeta);
+        if (req.session == null) {
+            req.session = {}
+        }
+        req.session.user = user.sessionV0;
+        req.session.appVersion = req.body.appVersion;
+        res.status(StatusCodes.OK).json({
+            user: user,
+            optionalTasks: taskList,
+        });
+    });
+}
+
+function missingParam(res) {
+    res.status(StatusCodes.MISSING_PARAM).json();
+}
+
+router.post('/login', function (req, res, next) {
+    // res.status(200).json({taskItems: taskItems});
+    var username = req.body.username;
+    var password = req.body.password;
+    var department = req.body.department;
+    if (username == null || password == null || department == null) {
+        missingParam(res);
+        return;
+    }
+    UserSchema.findOne({username: username, department: department}, function (err, user) {
+        if (err)throw err;
+        if (user == null) {
+            res.status(StatusCodes.USER_NOT_FOUND).json();
+        } else {
+            Passhash.compare(password, user.password, function (err, result) {
+                if (err) {
+                    throw err;
+                }
+                if (result) {
+                    userFound(req, res, user);
+                } else {
+                    res.status(StatusCodes.WRONG_PASSWORD).json();
+                }
+            });
+        }
+    });
+    console.log("New user with name " + req.body.username + "has requested", loggerMeta)
 });
+
+router.get('/', function (req, res, next) {
+    UserSchema.find({}, function (err, users) {
+        if (err)throw err;
+        res.status(200).json(users);
+    });
+});
+
+router.get('/currentUser', Verify.verifyUser, function (req, res, next) {
+    var userId = req.session.user._id;
+    var appVersion = req.session.appVersion;
+    if (userId == null) {
+        res.status(StatusCodes.USER_NOT_FOUND).json();
+        return;
+    }
+    UserSchema.findOne(userId, function (err, user) {
+        if (err)throw err;
+        if (user) {
+            userFound(req, res, user);
+        } else {
+            res.status(StatusCodes.USER_NOT_FOUND).json({});
+        }
+    });
+});
+
 
 module.exports = router;

@@ -4,11 +4,6 @@
 const redis = require('redis');
 var config = require('../config');
 var redisClient = null;
-var winston = require("winston");
-
-var fileConsoleLogger = winston.loggers.get('FileConsoleLogger');
-var fileLogger = winston.loggers.get('FileLogger');
-var loggerMeta = {Context: "RedisConnection", Function: ""};
 
 if (!config.windows) {
     redisClient = redis.createClient();
